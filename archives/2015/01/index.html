@@ -70,6 +70,207 @@
     <div class="outer">
       <section id="main">
   
+    <article id="post-WebKit框架概览-Part-1" class="article article-type-post" itemscope itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2015/01/21/WebKit框架概览-Part-1/" class="article-date">
+  <time datetime="2015-01-21T01:14:44.000Z" itemprop="datePublished">1月 21 2015</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2015/01/21/WebKit框架概览-Part-1/">WebKit框架概览-Part-1</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <h1 id="WebKit框架概览-Part_1">WebKit框架概览-Part 1</h1>
+<p>译者:iBenjamin</p>
+<p>如果你曾今在你的App当中使用UIWebView加载网页内容的话，你应该体会到了其诸多不尽人意之处。UIWebView是基于移动版的Safari的，所以它的性能表现十分有限。特别是在对几乎每个Web应用都会使用的JavaScript，表现的尤为糟糕。</p>
+<p>但是，所有的这一切都在iOS8引入了一个新的框架，WebKit，之后变得好起来了。在WebKit框架中，有WKWebView可以替换UIKit的UIWebView和AppKit的WebView，而且提供了在两个平台可以一致使用的接口。</p>
+<p>WebKit框架使得开发者可以在原生App中使用Nitro来提高网页的性能和表现，Nitro就是Safari的JavaScript引擎。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/webkit-featured.jpg" alt=""></p>
+<p>WKWebView保证在滑动时保持60的帧率，同时具有KVO，内建手势，以及在App和网页之间的原生交流方式。</p>
+<p>横跨2篇文章，我们即将建立2个App来探索WebKit的功能（特别是WKWebView）。在第一个App当中，我们将建立一个和Safari功能相似的浏览器。在第二篇文章中，我们会深入到Webkit中去，探索更强大的功能：注入JavaScript到网页以改变内容和获取数据。</p>
+<h2 id="开始">开始</h2>
+<p>打开Xcode，创建一个新的工程。选择Single View Application，取名叫Browser，选择Swift为开发语言，Devices选择Universal。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image01.png" alt=""></p>
+<p>在ViewController.swift中导入WebKit框架。</p>
+<pre><code><span class="preprocessor"><span class="keyword">import</span> WebKit</span>
+</code></pre><p>将下面的变量加入到类中</p>
+<pre><code><span class="keyword">var</span> webView: WKWebView
+</code></pre><p>将下面的方法加入到类中。它将会初始化webview并设置其frame为0.稍后我们会使用自动布局（auto layout）来给webview添加约束，这样这个webview就能在任何苹果设备和任何方向上正常工作了。</p>
+<pre><code>required <span class="keyword">init</span>(coder aDecoder: <span class="type">NSCoder</span>) {
+<span class="keyword">self</span>.webView = <span class="type">WKWebView</span>(frame: <span class="type">CGRectZero</span>)
+<span class="keyword">super</span>.<span class="keyword">init</span>(coder: aDecoder)
+}
+</code></pre><p>在viewDidLoad()底部，添加如下语句。这样这个webView就被添加到主视图了。</p>
+<pre><code><span class="keyword">view</span>.addSubView(webView)
+</code></pre><p>接下来，在viewDidLoad()方法底部添加如下约束</p>
+<pre><code>webView.setTranslatesAutoresizingMaskIntoConstraints(false)
+let height = NSLayoutConstraint(item: webView, <span class="keyword">attribute</span>: .Height, relatedBy: .Equal, toItem: view, <span class="keyword">attribute</span>: .Height, multiplier: <span class="number">1</span>, <span class="keyword">constant</span>: <span class="number">0</span>)
+let width = NSLayoutConstraint(item: webView, <span class="keyword">attribute</span>: .Width, relatedBy: .Equal, toItem: view, <span class="keyword">attribute</span>: .Width, multiplier: <span class="number">1</span>, <span class="keyword">constant</span>: <span class="number">0</span>)
+view.addConstraints([height, width])
+</code></pre><p>在此处，我们首先禁止了自动约束。然后我们对webview的宽和高添加了约束。这样webview就会和它的superview拥有一样的宽和高了。</p>
+<p>在程序启动时，我们将会打开一个默认页。然后我们添加一个textfield控件，这样用户就能输入自己想浏览的地址了。在viewDidLoad（）底部添加如下代码</p>
+<pre><code><span class="keyword">let</span> url = NSURL(<span class="built_in">string</span>:<span class="string">"http://www.appcoda.com"</span>)
+<span class="keyword">let</span> <span class="built_in">request</span> = NSURLRequest(URL:url!)
+webView.loadRequest(<span class="built_in">request</span>)
+</code></pre><p>运行程序。它将会加载Appcoda的主页。注意当你滑动页面的时候在导航栏下面也能看到模糊的网页，我们将禁止这样。首先打开Main.storyboard选择网页显示的ViewController。在属性检查（也就是右边的第四栏中）将Extend Edges中得Under Top Bars去掉勾选。再次运行程序，我们就会发现导航栏已经没有了毛玻璃效果而且我们也不能看见它下面的网页内容了。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image02.png" alt=""></p>
+<p>接下来让我们添加给用户输入URL的控件。</p>
+<p>在storyboard文件中，给向导航栏中拖放一个view。在属性检查（右边第四栏）中，设置其背景色为透明（clear color）。因为我们无法给导航栏中的view添加约束，我们将会以代码的形式调整其大小。</p>
+<pre><code>@<span class="type">IBoutlet</span> <span class="keyword">weak</span> <span class="keyword">var</span> barView: <span class="type">UIView</span>!
+</code></pre><p>在viewDidLoad（）的super.viewDidLoad()之后添加如下代码</p>
+<pre><code><span class="filename">barView.frame = CGRect(x</span>:<span class="number">0</span>, y: <span class="number">0</span>, width: <span class="filename">view.frame.width, height</span>: <span class="number">30</span>)
+</code></pre><p>这段代码设置了barView的大小。</p>
+<p>将下面的方法添加到类</p>
+<pre><code><span class="keyword">override</span> <span class="func"><span class="keyword">func</span></span> viewWillTransitionToSize(size: <span class="type">CGSize</span>, withTransitionCoordinator coordinator: <span class="type">UIViewControllerTransitionCoordinator</span>) {
+barView.frame = <span class="type">CGRect</span>(x:<span class="number">0</span>, y: <span class="number">0</span>, width: size.width, height: <span class="number">30</span>)
+}
+</code></pre><p>这段代码将在设备方向改变时重新设置barView的大小。</p>
+<p>接下来运行程序，你可以看见在导航栏中展开的view，如果更改设备方向，这个view也会跟着改变大小。</p>
+<p>接下来，拖放一个textfield控件到这个view里面。然后点击画布右下方的Pin按钮（第二个）。将其top，bottom，right，left的距离设置为0，如下图所示。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image03.png" alt=""></p>
+<p>然后依次点击，Editor-》Resolve Auto Layout Issues-》Selected View-》Update Frame，解决警告。</p>
+<p>然后创建一个outlet。取名urlField。你应会看到如下代码。</p>
+<pre><code><span class="preprocessor">@IBOutlet</span> <span class="keyword">weak</span> <span class="keyword">var</span> urlField: <span class="type">UITextField</span>!
+</code></pre><p>我们希望viewcontroller能成为UITextFieldDelegate的代理，在storyboard的Document Outline中，按下control然后将textfield拖放到viewcontroller，然后在弹出视图选择delegate。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image04.png" alt=""></p>
+<p>选择textfield控件，在属性检查（右边第四栏）设置如下属性。</p>
+<ol>
+<li>Clear Button：Appears while editing</li>
+<li>Correction： NO</li>
+<li>Keyboard Type：URL</li>
+<li>Return Key：Go</li>
+</ol>
+<p>在类声明部分添加实现UITextFieldDelegate代码。</p>
+<pre><code><span class="class"><span class="keyword">class</span> <span class="title">ViewController</span>: <span class="title">UIViewController</span>, <span class="title">UITextFieldDelegate</span></span>
+</code></pre><p>接下来添加如下UITextFieldDelegate代码</p>
+<pre><code><span class="input"><span class="prompt">func textFieldShouldReturn(textField: UITextField) -&gt;</span> <span class="constant">Bool</span> {
+urlField.resignFirstResponder()</span>
+webView.loadRequest(<span class="constant">NSURLRequest</span>(<span class="constant">URL</span><span class="symbol">:</span> <span class="constant">NSURL</span>(<span class="symbol">string:</span> urlField.text)!))
+<span class="keyword">return</span> <span class="keyword">false</span>
+}
+</code></pre><p>以上代码会隐藏键盘，然后加载用户输入的url。尝试输入一个url，我们发现。我们必须输入一个完整的url，比如：<a href="http://google.com。对我们的用户这有一点麻烦，我们可以检查用户的输入，然后给用户输入的url在必要时添加‘http://’前缀。这里我们不会详述了。" target="_blank" rel="external">http://google.com。对我们的用户这有一点麻烦，我们可以检查用户的输入，然后给用户输入的url在必要时添加‘http://’前缀。这里我们不会详述了。</a></p>
+<h2 id="浏览历史">浏览历史</h2>
+<p>现在我们的浏览器已经能工作了，但是它还缺少了一些浏览器应有的功能。载入进度提示，前进和后退，刷新按钮，等等。</p>
+<p>通过KVO（Key Value Observing），我们可以监听WKWebView的载入进度、网页标题和url属性。你可以使用这些来更新你的UI。</p>
+<p>首先，让我们添加后退、前进及刷新按钮。</p>
+<p>在storyboard中，选择View Controller，点击属性检查（Attributes Inspector），在Simulated Metrics一栏，将BottomBar选择为None。</p>
+<p>拖放一个Toolbar到view得底部。添加其left，right和bottom距离为0，并确保Constrans to margins一栏没有被勾选。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image05.png" alt=""></p>
+<p>在viewDidLoad（）方法中调整webView的高度，以显示toolbar。</p>
+<pre><code>let height = NSLayoutConstraint(item: webView, <span class="keyword">attribute</span>: .Height, relatedBy: .Equal, toItem: view, <span class="keyword">attribute</span>: .Height, multiplier: <span class="number">1</span>, <span class="keyword">constant</span>: -<span class="number">44</span>)
+</code></pre><p>移除toolbar中得button，然后按顺序添加以下控件：Bar Button Item、Fixed Space Bar Button Item、Bar Button Item，Flexible Space Bar Button Item和Bar Button Item。toolbar应该是这个样子。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image06.png" alt=""></p>
+<p>编辑bar button成下面的样子。这些按钮将成为我们的前进后退及刷新按钮。在一个真实的App当中，为这些按钮放上图标将是更好的选择，但是为了简便，我们使用文本。toolbar接下来应该是这个样子。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image07.png" alt=""></p>
+<p>为每一个bar button创建一个outlet。取名为backButton，forwardButton和reloadButton。你应该会得到如下代码</p>
+<pre><code><span class="preprocessor">@IBOutlet</span> <span class="keyword">weak</span> <span class="keyword">var</span> backButton: <span class="type">UIBarButtonItem</span>!
+<span class="preprocessor">@IBOutlet</span> <span class="keyword">weak</span> <span class="keyword">var</span> forwardButton: <span class="type">UIBarButtonItem</span>!
+<span class="preprocessor">@IBOutlet</span> <span class="keyword">weak</span> <span class="keyword">var</span> reloadButton: <span class="type">UIBarButtonItem</span>!
+</code></pre><p>然后为每个按钮依次分别创建back，forward和reload方法。将每个action的Type更改为UIBarButtonItem。你应该会得到如下代码。</p>
+<pre><code><span class="at_rule">@<span class="keyword">IBAction</span> func <span class="function">back</span>(sender: UIBarButtonItem) </span>{
+}
+
+<span class="at_rule">@<span class="keyword">IBAction</span> func <span class="function">forward</span>(sender: UIBarButtonItem) </span>{
+}
+
+<span class="at_rule">@<span class="keyword">IBAction</span> func <span class="function">reload</span>(sender: UIBarButtonItem) </span>{
+}
+</code></pre><p>在viewDidLoad()的底部添加如下代码。我们不希望后退和前进按钮在App被启动时就可点击。</p>
+<pre><code>backButton.<span class="variable">enabled =</span> <span class="constant">false</span>
+forwardButton.<span class="variable">enabled =</span> <span class="constant">false</span>
+</code></pre><p>在viewDidLoad（）的约束条件添加代码之后，创建并载入一个任务代码之前，添加如下代码。这句代码使得这个类成为了loading属性的监听者。</p>
+<pre><code>webView.addObserver(<span class="keyword">self</span>, <span class="symbol">forKeyPath:</span> <span class="string">"loading"</span>, <span class="symbol">options:</span> .<span class="constant">New</span>, <span class="symbol">context:</span> <span class="keyword">nil</span>)
+</code></pre><p>添加下面的方法到类。这个方法将会在可监听的属性变化时执行。后退和前进按钮将根据当前webview的状态来决定是否可被点击。</p>
+<pre><code><span class="keyword">override</span> <span class="func"><span class="keyword">func</span></span> observeValueForKeyPath(keyPath: <span class="type">String</span>, ofObject object: <span class="type">AnyObject</span>, change: [<span class="type">NSObject</span> : <span class="type">AnyObject</span>], context: <span class="type">UnsafeMutablePointer</span>) {
+<span class="keyword">if</span> (keyPath == <span class="string">"loading"</span>) {
+    backButton.enabled = webView.canGoBack
+    forwardButton.enabled = webView.canGoForward
+}
+}
+</code></pre><p>修改back（），forward（）和reload（）方法。</p>
+<pre><code><span class="preprocessor">@IBAction</span> <span class="func"><span class="keyword">func</span></span> back(sender: <span class="type">UIBarButtonItem</span>) {
+webView.goBack()
+}
+
+<span class="preprocessor">@IBAction</span> <span class="func"><span class="keyword">func</span></span> forward(sender: <span class="type">UIBarButtonItem</span>) {
+webView.goForward()
+}
+
+<span class="preprocessor">@IBAction</span> <span class="func"><span class="keyword">func</span></span> reload(sender: <span class="type">UIBarButtonItem</span>) {
+<span class="keyword">let</span> request = <span class="type">NSURLRequest</span>(<span class="type">URL</span>:webView.<span class="type">URL</span>!)
+webView.loadRequest(request)
+}
+</code></pre><p>运行并测试这些按钮。后退和前进按钮开始时应该不可点击。当你浏览一个页面时，后退按钮应该可被点击。当你后退时，前进按钮应该可被点击。点击R按钮，会重新加载页面</p>
+<h2 id="处理错误">处理错误</h2>
+<p>我们不能保证用户总是输入正确地url，我们需要写代码来获取这一错误并提示用户。</p>
+<p>首先修改类声明，如下所示：</p>
+<pre><code><span class="class"><span class="keyword">class</span> <span class="title">ViewController</span>: <span class="title">UIViewController</span>, <span class="title">UITextFieldDelegate</span>, <span class="title">WKNavigationDelegate</span></span>
+</code></pre><p>WKWebView有一个属性navigationDelegate，接受一个实现WKNavigationDelegate协议的对象。这个协议提供了多种方法来处理导航事件，包括载入错误。</p>
+<p>在init（）底部添加如下代码。通过下面的代码，我们将这个类设置成了webview的navigation代理。</p>
+<pre><code><span class="keyword">self</span>.webView.navigationDelegate = <span class="keyword">self</span>
+</code></pre><p>接下来添加如下方法。这个代理方法将会在有错误发生时被调用。</p>
+<p>运行程序，输入一个错误的url测试一下。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image08.png" alt=""></p>
+<h2 id="展示进度">展示进度</h2>
+<p>最后，我们将会添加一个进度展示。</p>
+<p>在storyboard文件中，在导航栏下方添加一个progress view。设置其top，right和left如下所示。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image09.png" alt=""></p>
+<p>为progress view创建一个outlet。你应该会得到下面的代码。</p>
+<pre><code><span class="preprocessor">@IBOutlet</span> <span class="keyword">weak</span> <span class="keyword">var</span> progressView: <span class="type">UIProgressView</span>!
+</code></pre><p>在ViewController中，替换西面的代码</p>
+<pre><code><span class="keyword">view</span>.addSubview(webView)
+</code></pre><p>为</p>
+<pre><code><span class="keyword">view</span>.insertSubview(webView, belowSubvie<span class="variable">w:</span> progressView)
+</code></pre><p>在viewDidLoad（）中创建和载入一个url任务之前添加下面的代码，调用webview的addObserver方法。</p>
+<pre><code>webView.addObserver(<span class="keyword">self</span>, <span class="symbol">forKeyPath:</span> <span class="string">"estimatedProgress"</span>, <span class="symbol">options:</span> .<span class="constant">New</span>, <span class="symbol">context:</span> <span class="keyword">nil</span>)
+</code></pre><p>在observeValueForKeyPath（）方法中的其他if语句之后添加如下代码。</p>
+<pre><code><span class="keyword">if</span> (<span class="variable">keyPath =</span>= <span class="string">"estimatedProgress"</span>) {
+progressView.<span class="variable">hidden =</span> webView.<span class="variable">estimatedProgress =</span>= <span class="number">1</span>
+progressView.setProgress(Float(webView.estimatedProgress), animated: <span class="constant">true</span>)
+}
+</code></pre><p>这段代码将会更新progressview的进度，如果加载完毕会隐藏progressview。</p>
+<p>在类中添加如下代码。这是一个WKNavigationDelegate的代理方法，将会在页面载入完毕后执行。当一个任务完成后，我们使用它来重置progress view的进度。</p>
+<pre><code><span class="func"><span class="keyword">func</span></span> webView(webView: <span class="type">WKWebView</span>!, didFinishNavigation navigation: <span class="type">WKNavigation</span>!) {
+progressView.setProgress(<span class="number">0.0</span>, animated: <span class="built_in">false</span>)
+}
+</code></pre><p>运行程序，当网页加载时，你将会看到一个蓝色的进度条。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image10.png" alt=""></p>
+<h2 id="总结">总结</h2>
+<p>我们已经了解了WebKit的基础部分。我们看到如何添加一些和Safari相似的功能，如载入url，浏览历史，检测错误，展示进度。在这个教程的第二部分，我们会深入了解如何将一个JavaScript注入网页，来构建一个更强大的程序。</p>
+<p>你可以通过这个<a href="https://github.com/iBenjamin/Browser" target="_blank" rel="external">链接</a>来下载这个教程的实例代码。</p>
+<p>原文链接:<a href="http://www.appcoda.com/webkit-framework-intro/" target="_blank" rel="external">http://www.appcoda.com/webkit-framework-intro/</a></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      
+        <a data-url="http://yoursite.com/2015/01/21/WebKit框架概览-Part-1/" data-id="605c0wozzsb4fpoe" class="article-share-link" data-share="baidu">分享到</a>
+      
+
+      
+        <a href="http://yoursite.com/2015/01/21/WebKit框架概览-Part-1/#ds-thread" class="article-comment-link">Comments</a>
+      
+
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-在ios8创建一个交互性强的本地通知" class="article article-type-post" itemscope itemprop="blogPost">
   <div class="article-meta">
     <a href="/2015/01/13/在ios8创建一个交互性强的本地通知/" class="article-date">
@@ -750,7 +951,7 @@ tblShoppingList.reloadData()
   <div class="widget-wrap">
     <h3 class="widget-title">归档</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2015/01/">January 2015</a><span class="archive-list-count">2</span></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2015/01/">January 2015</a><span class="archive-list-count">3</span></li></ul>
     </div>
   </div>
 
@@ -760,6 +961,10 @@ tblShoppingList.reloadData()
     <h3 class="widget-title">近期文章</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2015/01/21/WebKit框架概览-Part-1/">WebKit框架概览-Part-1</a>
+          </li>
         
           <li>
             <a href="/2015/01/13/在ios8创建一个交互性强的本地通知/">在ios8创建一个交互性强的本地通知</a>
