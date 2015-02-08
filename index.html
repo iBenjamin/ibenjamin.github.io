@@ -70,6 +70,311 @@
     <div class="outer">
       <section id="main">
   
+    <article id="post-WebKit框架概览-Part2" class="article article-type-post" itemscope itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2015/02/08/WebKit框架概览-Part2/" class="article-date">
+  <time datetime="2015-02-08T02:43:33.000Z" itemprop="datePublished">2月 8 2015</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2015/02/08/WebKit框架概览-Part2/">WebKit框架概览-Part2</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <h1 id="WebKit框架概览-Part2">WebKit框架概览-Part2</h1>
+<p>在<a href="http://ibenjamin.github.io/2015/01/21/WebKit%E6%A1%86%E6%9E%B6%E6%A6%82%E8%A7%88-Part-1/" target="_blank" rel="external">第一部分</a>中，我们了解了WebKit框架的基础部分。在本篇文章中，我们会深入了解WebKit框架并学习如何在原生App中定制网页。我们也会学习如何从网页中获得数据，并在App中使用数据。</p>
+<p>接下来我们将建立一个专门浏览appcoda.com的App。首先，请<a href="https://github.com/iBenjamin/AppCodasDemo" target="_blank" rel="external">下载</a>初始项目。初始项目就是一个名为Coda的简单浏览器，跟我们在第一个部分编写的App差不多。唯一的区别就是没有textfield控件给用户输入url，而且我也将前进、后退和刷新按钮更换成了图片。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/webkit-javascript.jpg" alt=""></p>
+<h2 id="处理外部链接">处理外部链接</h2>
+<p>如果你运行这个App并点击了一个外部链接，webview会加载这个链接。但是这个App使用来浏览Appcoda的，所以我们需要防止加载外部链接。如果用户点击了外部链接，这个链接的内容就会在Safari中打开。</p>
+<p>我们需要的是定制网页加载的方式。达到这个目标，我们需要干涉加载网页的正常过程。在完成这个目标之前，让我们先来了解一下网页加载的过程。</p>
+<p>网页加载由一个动作（Action）触发。这可能是任何导致网页加载的动作，比如：触碰一个链接、点击后退、前进和刷新按钮，JavaScript设置了window.location属性，子窗口的加载或者对WKWebView的loadRequest（）方法的调用。然后一个请求被发送到了服务器，我们会得到一个响应（可能是有意义的也可能是错误状态码，比如：404）。最后服务器会发送更多地数据，并结束加载过程。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image011.png" alt=""></p>
+<p>WebKit允许你的App在动作（Action）和响应（Response）阶段之间注入代码，并决定是否继续加载，取消或是做你想做的事情。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image021.png" alt=""></p>
+<p>在ViewController中加入如下方法。</p>
+<pre><code>func webView<span class="function"><span class="params">(webView: WKWebView!, decidePolicyForNavigationAction navigationAction: WKNavigationAction!, decisionHandler: ((WKNavigationActionPolicy) -&gt; Void)!)</span> {
+<span class="title">if</span> <span class="params">(navigationAction.navigationType == WKNavigationType.LinkActivated &amp;&amp; !navigationAction.request.URL.host!.lowercaseString.hasPrefix(<span class="string">"www.appcoda.com"</span>))</span> {
+    <span class="title">UIApplication</span>.<span class="title">sharedApplication</span><span class="params">()</span>.<span class="title">openURL</span><span class="params">(navigationAction.request.URL)</span>
+    <span class="title">decisionHandler</span><span class="params">(WKNavigationActionPolicy.Cancel)</span>
+} <span class="title">else</span> {
+    <span class="title">decisionHandler</span><span class="params">(WKNavigationActionPolicy.Allow)</span>
+}
+}</span>
+</code></pre><p>上述是一个WKNavigationDelegate代理方法，在网页加载时会被多次调用。其中一个参数WKNavigationAction对象包含了帮助你决定是否让一个网页被加载的信息。在上面的代码中，我们使用其中两个属性，navigationType和request。我们只想中断被用户点击的外部链接的加载过程，所以我们检查了navigationType。然后我们检查了request的url来确认它是否是一个外部链接。如果两个条件都满足，这个url就会在用户的浏览器中打开（通常都是Safari）并且WKNavigationActionPolicy.Cancel终止了App加载网页的过程。否则这个网页就会被加载并显示。</p>
+<p>运行这个程序，点击任何外部链接，这个链接都会在Safari中被加载。</p>
+<h2 id="设置网页标题">设置网页标题</h2>
+<p>如果网页能有标题来提示用户在哪里的话，这将会非常有用。在前面的文章中，我们学习了一些WKWebView的KVO属性比如loading和estimatedProgress。title也是一个KVO属性，我们将用它来获得当前网页的标题。</p>
+<p>在viewDidLoad()其他addObserver()方法下面加入如下代码：</p>
+<pre><code>webView.addObserver(<span class="keyword">self</span>, <span class="symbol">forKeyPath:</span> <span class="string">"title"</span>, <span class="symbol">options:</span> .<span class="constant">New</span>, <span class="symbol">context:</span> <span class="keyword">nil</span>)
+</code></pre><p>然后在observeValueForKeyPath(_:, ofObject:)方法其他if语句下方加入如下代码。</p>
+<pre><code><span class="keyword">if</span> (<span class="variable">keyPath =</span>= <span class="string">"title"</span>) {
+<span class="variable">title =</span> webView.title
+}
+</code></pre><p>运行程序，随便逛逛，你将发现navigationbar的title会被正确地更新。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image031.png" alt=""></p>
+<h2 id="修改网页内容">修改网页内容</h2>
+<p>现在这个Coda App是一个Appcoda的专用浏览器，但是我们还可以做几样事情来提升一下用户体验。</p>
+<p>因为设备的特性，移动App以简明的方式展示数据和信息。用户希望能看到他们想看的东西，而且不用做大量的滑动来获得信息。</p>
+<p>目前为止，这个App展示了Appcoda网页的所有内容。我们想忽略某些和网页内容相关程度不大的东西。我们将会移除侧边栏和底部展示<a href="http://www.appcoda.com/swift/" target="_blank" rel="external">Appcoda Swift book</a>的栏目。</p>
+<p>为了达到这个目标，我们使用JavaScript向网页注入CSS规则以隐藏这些栏目。首先，我们需要检查网页然后决定规则。</p>
+<p>为了检查网页，我们使用大多数浏览器都支持的开发者工具。你也可以自己以插件（plugins）或者add-ons的形式安装到你的浏览器，比如火狐的<a href="http://getfirebug.com/" target="_blank" rel="external">Firebug</a>。我将使用Chrome的开发者工具，但你可以使用任何你喜欢的。其过程大致一样。</p>
+<p>打开Chrome开发者工具，View-&gt;Developer-&gt;Developer Tools。</p>
+<p>这将在浏览器底部打开一个开发者窗口。开发者窗口将和上半部分左边的网页源码和邮编的CSS样式查看分离开来。在底部，是JavaScript命令行，这里你可以输入你的代码，它将会在网页执行。</p>
+<p>我们需要检查id属性然后标记处我们想要隐藏的栏目。</p>
+<p>侧边栏会在所有的网页中显示，而底部的书籍栏目只会在文章页面显示。点击任意一篇文章，打开开发者工具。首先，右击侧边栏并选择检查元素。在开发者窗口中，会高亮显示对应的元素代码。如果你将你的鼠标移动到对应的代码，网页部分相对应的区域也会高亮显示。我们希望得到包含了整个侧边栏的根元素id（或者class）。</p>
+<p>根据你选择审查元素时所处的位置，向上折叠标签直到只有侧边栏在页面中被高亮显示。上一个被折叠的标签就是我们要的根元素。在这里，他是一个div标签，id为’sidebar‘。</p>
+<p>在将代码写入你的App之前，你最好在浏览器中测试一下它。因为如果发生了什么错误的话，在App中调试会非常困难。我们首先在浏览器中测试CSS和JavaScript。</p>
+<p>点击我们在上面找到的div标签。在窗口的右边你将会看见它的CSS布局。点击+按钮添加一条CSS规则，如下所示。</p>
+<pre><code><span class="keyword">div</span><span class="comment">#sidebar{</span>
+}
+</code></pre><p>在上面的代码中添加如下代码：</p>
+<pre><code><span class="attribute">display</span><span class="value">:none;</span>
+</code></pre><p>在你添加完上述代码后，侧边栏应该会从页面消失。</p>
+<p>现在删除这条布局规则以显示侧边栏。现在我们要使用JavaScript往DOM中添加代码。在html页面之下，是运行JavaScript的命令行。将如下代码粘贴到命令行。</p>
+<pre><code><span class="keyword">var</span> styleTag = <span class="built_in">document</span>.createElement(<span class="string">"style"</span>);
+</code></pre><p>上述代码创建了一个元素并赋值给了一个变量。接下来我们如下代码，他将会给这个元素添加css规则。我也把底部书籍栏目也添加了进去。</p>
+<pre><code>style<span class="variable">Tag</span>.text<span class="variable">Content</span> = '<span class="keyword">div</span><span class="record_name">#sidebar</span>, .<span class="keyword">after</span>-post.widget-area <span class="tuple">{display:none;}</span>';
+</code></pre><p>最后，使用下面的代码给DOM添加样式标签。这段代码会马上执行，侧边栏和底部的书籍栏目会消失。</p>
+<pre><code><span class="built_in">document</span>.documentElement.appendChild(styleTag);
+</code></pre><p>上面的几个过程是隐藏页面元素的必须过程。</p>
+<p>回到Xcode，创建一个新文件File-&gt;New-&gt;File-&gt;iOS-&gt;Other-&gt;Empty并命名为hideSection.js。添加如下代码。</p>
+<pre><code><span class="keyword">var</span> styleTag = <span class="built_in">document</span>.createElement(<span class="string">"style"</span>);
+styleTag.textContent = <span class="string">'div#sidebar, .after-post.widget-area {display:none;}'</span>;
+<span class="built_in">document</span>.documentElement.appendChild(styleTag);
+</code></pre><p>在ViewController中，替换init（）中方法为如下：</p>
+<pre><code>required <span class="keyword">init</span>(coder aDecoder: <span class="type">NSCoder</span>) {
+<span class="keyword">let</span> config = <span class="type">WKWebViewConfiguration</span>()
+<span class="keyword">let</span> scriptURL = <span class="type">NSBundle</span>.mainBundle().pathForResource(<span class="string">"hideSections"</span>, ofType: <span class="string">"js"</span>)
+<span class="keyword">let</span> scriptContent = <span class="type">String</span>(contentsOfFile:scriptURL!, encoding:<span class="type">NSUTF8StringEncoding</span>, error: <span class="built_in">nil</span>)
+<span class="keyword">let</span> script = <span class="type">WKUserScript</span>(source: scriptContent!, injectionTime: .<span class="type">AtDocumentStart</span>, forMainFrameOnly: <span class="built_in">true</span>)
+config.userContentController.addUserScript(script)
+<span class="keyword">self</span>.webView = <span class="type">WKWebView</span>(frame: <span class="type">CGRectZero</span>, configuration: config)
+<span class="keyword">super</span>.<span class="keyword">init</span>(coder: aDecoder)
+<span class="keyword">self</span>.webView.navigationDelegate = <span class="keyword">self</span>    
+}
+</code></pre><p>上述代码创建了一个WKWebViewConfiguration对象，它拥有一些属性来作为原生代码和网页之间沟通的桥梁。JavaScript代码被一个WKUserScript对象加载和包装。然后这个脚本被赋值给WKWebViewConfiguration对象的userContentController属性，接着webView使用这个配置来初始化。</p>
+<p>当创建WKUserScript对象时，我们决定这个脚本什么时候应该被注入，和被作用于整个页面或者某个特定的frame。</p>
+<p>运行程序，你不在会看到侧边栏（在iPhone中，它将会在页面底部以下的区域显示）和底部书籍栏目了。</p>
+<h2 id="提取网页数据">提取网页数据</h2>
+<p>Appcoda的主页显示最近的10篇文章。当我们在设备上浏览主页时，你必须滑动许多次以看到底部的内容。我们希望有一个更简单地方式来获取最近的文章。我们将创建一个tableview来保存最近的文章。</p>
+<p>我们通过提取网页数据来创建这个tableview。这里我不再会注入html了。我将会给出一段我所使用的用来获得文章的JavaScript代码，并解释它如何工作。</p>
+<p>如果你在主页运行如下JavaScript代码，一列包含这些文章的标题和url的数据将会被打印到命令行。</p>
+<pre><code><span class="keyword">var</span> postsWrapper = <span class="built_in">document</span>.querySelector(<span class="string">'#content'</span>)
+<span class="keyword">var</span> posts = postsWrapper.querySelectorAll(<span class="string">'.post.type-post.status-publish'</span>)
+
+<span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; posts.length; i++) {
+<span class="keyword">var</span> post = posts[i];
+<span class="keyword">var</span> postTitle = post.querySelector(<span class="string">'h2.entry-title a'</span>).textContent;
+<span class="keyword">var</span> postURL = post.querySelector(<span class="string">'h2.entry-title a'</span>).getAttribute(<span class="string">'href'</span>);
+<span class="built_in">console</span>.log(<span class="string">"Title: "</span>, postTitle, <span class="string">" URL: "</span>, postURL);
+}
+</code></pre><p>如果你观察网页文章部分的html结构，你回发现类似下面的东西。</p>
+<pre><code>&lt;div id=<span class="string">'content'</span>&gt;
+&lt;div class=<span class="string">'post type-post status-publish'</span>&gt;
+&lt;h2 class=<span class="string">'entry-title'</span>&gt;
+    &lt;a&gt;&lt;/a&gt;
+    &lt;/h2&gt;
+&lt;div class=<span class="string">'post-info'</span>&gt;&lt;/div&gt;
+&lt;div class=<span class="string">'entry-content'</span>&gt;&lt;/div&gt;
+&lt;div class=<span class="string">'post-meta'</span>&gt;&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class=<span class="string">'post type-post status-publish'</span>&gt;&lt;/div&gt;
+&lt;div class=<span class="string">'post type-post status-publish'</span>&gt;&lt;/div&gt;
+&lt;div class=<span class="string">'post type-post status-publish'</span>&gt;&lt;/div&gt;
+<span class="keyword">...</span>
+<span class="keyword">...</span>
+<span class="keyword">...</span>
+&lt;/div&gt;
+</code></pre><p>在上面的JavaScript代码中，我们通过‘content’id获得元素。这个是一个div元素，文章列表的中间父元素。我们将会获得这个div下的所有子元素，然后赋值给posts变量。它将会持有一个class为post的div数组。我们遍历这个数组，获得每个h2标签中得得文本。我们也通过另外一个链接标记的href属性来获得每个文章的URL。然后我们打印这些内容。</p>
+<p>打开Xcode，创建一个新文件File-&gt;New-&gt;File-&gt;iOS-&gt;Other-&gt;Empth。命名为getPost.js。粘贴如下代码。</p>
+<pre><code><span class="keyword">var</span> postsWrapper = <span class="built_in">document</span>.querySelector(<span class="string">'#content'</span>)
+<span class="keyword">var</span> posts = postsWrapper.querySelectorAll(<span class="string">'.post.type-post.status-publish'</span>)
+
+<span class="function"><span class="keyword">function</span> <span class="title">parsePosts</span><span class="params">()</span> </span>{
+pos = []
+
+<span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; posts.length; i++) {
+    <span class="keyword">var</span> post = posts[i];
+    <span class="keyword">var</span> postTitle = post.querySelector(<span class="string">'h2.entry-title a'</span>).textContent;
+    <span class="keyword">var</span> postURL = post.querySelector(<span class="string">'h2.entry-title a'</span>).getAttribute(<span class="string">'href'</span>);
+    pos.push({<span class="string">'postTitle'</span> : postTitle, <span class="string">'postURL'</span> : postURL});
+}
+
+<span class="keyword">return</span> pos
+}
+
+<span class="keyword">var</span> postsList = parsePosts();
+webkit.messageHandlers.didGetPosts.postMessage(postsList);
+</code></pre><p>上面的代码获得了所有文章的标题和url并把他们保存到了一个数组。最后一行代码是的JavaScript和原生代码之间能够交流。webkit.messageHandlers是一个全局对象，用来帮助触发原生代码回调。didGetPosts代表了和一个原生代码方法一样名字的消息。postMessage向回调中传递了postsList数组。</p>
+<p>在故事板中，拖放一个导航栏按钮到导航栏的左边。并改变它的名称为‘Recent’。然后创建一个它的outlet并命名为recentPostsButton。你应该会看到如下代码。</p>
+<pre><code><span class="preprocessor">@IBOutlet</span> <span class="keyword">weak</span> <span class="keyword">var</span> recentPostsButton: <span class="type">UIBarButtonItem</span>!
+</code></pre><p>在viewDidLoad（）方法底部，添加如下代码。我们希望这个按钮一直不可点，直到posts数组有了数据。</p>
+<pre><code>recentPostsButton.<span class="variable">enabled =</span> <span class="constant">false</span>
+</code></pre><p>在ViewController，import语句下面添加如下代码。</p>
+<pre><code><span class="keyword">let</span> <span class="variable">MessageHandler =</span> <span class="string">"didGetPosts"</span>
+</code></pre><p>在类文件中添加如下属性。</p>
+<pre><code><span class="keyword">var</span> postsWebView: WKWebView?
+</code></pre><p>在viewDidLoad()底部添加如下代码。</p>
+<pre><code><span class="keyword">let</span> <span class="variable">config =</span> WKWebViewConfiguration()
+<span class="keyword">let</span> <span class="variable">scriptURL =</span> NSBundle.mainBundle().pathForResource(<span class="string">"getPosts"</span>, ofType: <span class="string">"js"</span>)
+<span class="keyword">let</span> <span class="variable">scriptContent =</span> String(contentsOfFile:scriptURL!, encoding:NSUTF8StringEncoding, error: nil)
+<span class="keyword">let</span> <span class="variable">script =</span> WKUserScript(source: scriptContent!, injectionTime: .AtDocumentEnd, forMainFrameOnly: <span class="constant">true</span>)
+config.userContentController.addUserScript(script)
+config.userContentController.addScriptMessageHandler(self, name: MessageHandler)
+<span class="variable">postsWebView =</span> WKWebView(frame: CGRectZero, configuration: config)
+postsWebView!.loadRequest(NSURLRequest(URL:NSURL(string:<span class="string">"http://www.appcoda.com"</span>)!))
+</code></pre><p>这里我们像之前导入JavaScript文件一样导入一个JavaScript文件，我们只希望DOM被构建好时及.AtDocumentEnd时被注入一次。我们也将MessageHandler加入了WKWebViewConfiguration作为WKWebView初始化的配置。</p>
+<p>更新类声明，遵循WKScriptMessageHandler协议。</p>
+<pre><code><span class="class"><span class="keyword">class</span> <span class="title">ViewController</span>: <span class="title">UIViewController</span>, <span class="title">WKNavigationDelegate</span>, <span class="title">WKScriptMessageHandler</span></span>
+</code></pre><p>我们建立一个模型（model）文件来保存文章数据。创建一个文件File-&gt;New-&gt;File-&gt;iOS-&gt;Source-&gt;Cocoa Touch Class。命名为Post并作为NSObject的子类。在类中粘贴如下代码。</p>
+<pre><code><span class="keyword">import</span> <span class="type">UIKit</span>
+
+<span class="class"><span class="keyword">class</span> <span class="title">Post</span>: <span class="title">NSObject</span> </span>{
+
+<span class="keyword">var</span> postTitle: <span class="type">String</span> = <span class="string">""</span>
+<span class="keyword">var</span> postURL: <span class="type">String</span> = <span class="string">""</span>
+
+<span class="keyword">init</span>(dictionary: <span class="type">Dictionary</span>) {
+    <span class="keyword">self</span>.postTitle = dictionary[<span class="string">"postTitle"</span>]!
+    <span class="keyword">self</span>.postURL = dictionary[<span class="string">"postURL"</span>]!
+    <span class="keyword">super</span>.<span class="keyword">init</span>()
+}
+}
+</code></pre><p>在ViewController类中添加如下变量。</p>
+<pre><code><span class="attribute">var posts: [Post] </span>=<span class="string"> []</span>
+</code></pre><p>添加WKScripMessageHandler协议必须遵守的方法。</p>
+<pre><code>func userContentController(userContentController: WKUserContentController, didReceiveScriptMessage <span class="class"><span class="keyword">message</span>: <span class="title">WKScriptMessage</span>) </span>{
+if (<span class="class"><span class="keyword">message</span>.<span class="title">name</span> == MessageHandler) </span>{
+    if let postsList = <span class="class"><span class="keyword">message</span>.<span class="title">body</span> as? [Dictionary] </span>{
+        for ps in postsList {
+            let post = Post(dictionary: ps)
+            posts.append(post)
+        }
+        recentPostsButton.enabled = <span class="literal">true</span>
+    }
+}
+}
+</code></pre><p>上面的代码首先将检查接收到得消息是否是我们想要的，如果是，就会将消息中的数据提取成一个字典数组，然后使用其中的字典创建Post对象，并将这些Post对象依次添加到posts数组中，最后recentPostsButton就可被点击了。</p>
+<p>打开故事版，在画板中添加一个Table View Controller。选择它，使用Editor-&gt;Embed In-&gt;Navigation Controller将它嵌入一个navigation controller。</p>
+<p>按下Control，点击View Controller中得Recent按钮，拖到这个新的navigation controller中，选择popover presentation from the popup。选择这个被新创建了segue，设置它的Identifier为‘recentPosts’。</p>
+<p>创建一个新文件File-&gt;New-&gt;File-&gt;iOS-&gt;Source-&gt;Cocoa Touch class。命名为PostsTableViewController并选择为UITableViewController的子类。</p>
+<p>在故事板中，选择创建的Table View Controller，选择 Identity Inspector，设置class为PostsTableViewController。选择table view的prototype cell，在Attributes Inspector中设置Identifier为postCell。</p>
+<p>向PostTableViewController添加如下代码。</p>
+<pre><code><span class="keyword">import</span> <span class="type">UIKit</span>
+
+<span class="class"><span class="keyword">class</span> <span class="title">PostsTableViewController</span>: <span class="title">UITableViewController</span> </span>{
+
+<span class="keyword">var</span> posts: [<span class="type">Post</span>] = []
+
+<span class="keyword">override</span> <span class="keyword">init</span>(style: <span class="type">UITableViewStyle</span>) {
+    <span class="keyword">super</span>.<span class="keyword">init</span>(style: style)
+}
+
+required <span class="keyword">init</span>(coder aDecoder: <span class="type">NSCoder</span>) {
+    <span class="keyword">super</span>.<span class="keyword">init</span>(coder: aDecoder)
+}
+
+<span class="keyword">override</span> <span class="func"><span class="keyword">func</span></span> viewDidLoad() {
+    <span class="keyword">super</span>.viewDidLoad()
+    <span class="keyword">self</span>.title = <span class="string">"Recent Articles"</span>
+    tableView.reloadData()
+}
+
+<span class="keyword">override</span> <span class="func"><span class="keyword">func</span></span> numberOfSectionsInTableView(tableView:
+    <span class="type">UITableView</span>?) -&gt; <span class="type">Int</span> {
+    <span class="keyword">return</span> <span class="number">1</span>
+}
+
+<span class="keyword">override</span> <span class="func"><span class="keyword">func</span></span> tableView(tableView: <span class="type">UITableView</span>?, numberOfRowsInSection section: <span class="type">Int</span>) -&gt; <span class="type">Int</span> {
+    <span class="keyword">return</span> posts.<span class="built_in">count</span>
+}
+
+<span class="keyword">override</span> <span class="func"><span class="keyword">func</span></span> tableView(tableView: <span class="type">UITableView</span>, cellForRowAtIndexPath indexPath: <span class="type">NSIndexPath</span>) -&gt; <span class="type">UITableViewCell</span> {
+    <span class="keyword">let</span> cell = tableView.dequeueReusableCellWithIdentifier(<span class="string">"postCell"</span>, forIndexPath: indexPath) <span class="keyword">as</span> <span class="type">UITableViewCell</span>
+    <span class="keyword">let</span> post = posts[indexPath.row]
+    cell.textLabel?.text = post.postTitle
+    <span class="keyword">return</span> cell
+}
+}
+</code></pre><p>这里我们实现了tableview的数据源，他将会显示文章的标题。</p>
+<p>添加下面代码到ViewController。</p>
+<pre><code><span class="keyword">override</span> <span class="func"><span class="keyword">func</span></span> prepareForSegue(segue: <span class="type">UIStoryboardSegue</span>, sender: <span class="type">AnyObject</span>!) {
+<span class="keyword">if</span> (segue.identifier == <span class="string">"recentPosts"</span>) {
+    <span class="keyword">let</span> navigationController = segue.destinationViewController <span class="keyword">as</span> <span class="type">UINavigationController</span>
+    <span class="keyword">let</span> postsViewController = navigationController.topViewController <span class="keyword">as</span> <span class="type">PostsTableViewController</span>
+    postsViewController.posts = posts
+}
+}
+</code></pre><p>当点击Recent按钮时，此方法会被调用。在显示tableview View controller之前，它将posts数组传递给了tableview view controller。</p>
+<p>运行程序。点击Recent按钮，你会看到一个充满了文章列表的tableview。在iPhone上，它已满屏显示，在iPad在一个popover中显示。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image041.png" alt=""></p>
+<p>当你点击一个cell的时候，没有任何事情发生。我们希望被点击的文章被加载到web view上面。</p>
+<p>在ViewController中，添加如下代码到import语句下面。</p>
+<pre><code><span class="keyword">let</span> <span class="variable">PostSelected =</span> <span class="string">"postSelected"</span>
+</code></pre><p>当点击一个cell的时候，我们将发送一个通知。上面的常量就是这个通知的名字。</p>
+<p>在PostsTableViewController中添加如下方法。</p>
+<pre><code><span class="keyword">override</span> <span class="func"><span class="keyword">func</span></span> tableView(tableView: <span class="type">UITableView</span>, didSelectRowAtIndexPath indexPath: <span class="type">NSIndexPath</span>) {
+<span class="keyword">let</span> post = posts[indexPath.row]
+<span class="type">NSNotificationCenter</span>.defaultCenter().postNotificationName(<span class="type">PostSelected</span>, object: post)
+dismissViewControllerAnimated(<span class="built_in">true</span>, completion: <span class="built_in">nil</span>)
+}
+</code></pre><p>在上述方法中，每当一个cell被点击的时候会发送一个通知并隐藏（dismiss）这个tableview controller。</p>
+<p>在ViewController类中，viewDidLoad（）方法底部添加如下代码。</p>
+<pre><code><span class="built_in">NSNotificationCenter</span><span class="variable">.defaultCenter</span>()<span class="variable">.addObserver</span>(<span class="keyword">self</span>, selector: <span class="string">"postSelected:"</span>, name: PostSelected, object: <span class="literal">nil</span>)
+</code></pre><p>上述代码将这个ViewController设置为了cell点击发送的通知的观察者（observer）。</p>
+<p>在ViewController中添加如下方法。</p>
+<pre><code>func <span class="function">postSelected</span>(notification<span class="value">:NSNotification) {
+webView.<span class="function">loadRequest</span>(<span class="function">NSURLRequest</span>())
+let post = notification.object as Post
+webView.<span class="function">loadRequest</span>(<span class="function">NSURLRequest</span>(URL:<span class="function">NSURL</span>(string:post.postURL)!))
+}</span>
+</code></pre><p>通过上面的方法我们得到了通知中附加的post，然后加载了post中的url。</p>
+<p>运行程序，你应该可以在tableview中的任意文章之间切换了。</p>
+<p>到目前为止，当我们点击Recent按钮时，我们无法隐藏（dismissing）tableview，除非我们选择并点击一篇文章。我们需要添加一个取消按钮。</p>
+<p>在故事版中，在Table view controller的导航栏（navigationbar）的右边添加一个按钮。设置它的Identifier为Cancel。</p>
+<p>打开Assistan Editor，按下Control点击Cancel按钮拖动到PostTableViewController类中创建一个方法。命名为cancel，确保其参数类型为UIBarButtonItem。按照下面的代码编辑这个方法。</p>
+<pre><code><span class="preprocessor">@IBAction</span> <span class="func"><span class="keyword">func</span></span> cancel(sender: <span class="type">UIBarButtonItem</span>) {
+dismissViewControllerAnimated(<span class="built_in">true</span>, completion: <span class="built_in">nil</span>)
+}
+</code></pre><p>现在你应该有一个取消按钮了，它可以用来隐藏这个Table view。</p>
+<p><img src="http://www.appcoda.com/wp-content/uploads/2015/01/image051.png" alt=""></p>
+<h2 id="结论">结论</h2>
+<p>新的WebKit框架使得开发者能够让App和网页内容之间实现无缝交互。我们学习了如何自定义网页样式。从网页中提取数据，并在App中使用这些数据。</p>
+<p>如果你的App只是一个网页版App的容器，使用WebKit框架吧！它将带来如原生App般的性能和操作体验。WebKit框架将会为这些体验不好的App力挽狂澜。</p>
+<p>如果你想了解更多关于此框架的内容，这个<a href="https://developer.apple.com/videos/wwdc/2014/?id=206" target="_blank" rel="external">WWDC</a>视频将是个非常好的开始。</p>
+<p>你可以在<a href="https://github.com/iBenjamin/AppCodasDemo" target="_blank" rel="external">这里</a>下载完整项目。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      
+        <a data-url="http://yoursite.com/2015/02/08/WebKit框架概览-Part2/" data-id="xcs256pr4igy31rb" class="article-share-link" data-share="baidu">分享到</a>
+      
+
+      
+        <a href="http://yoursite.com/2015/02/08/WebKit框架概览-Part2/#ds-thread" class="article-comment-link">Comments</a>
+      
+
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-RAC文档翻译-基本操作符" class="article article-type-post" itemscope itemprop="blogPost">
   <div class="article-meta">
     <a href="/2015/01/29/RAC文档翻译-基本操作符/" class="article-date">
@@ -1089,7 +1394,7 @@ tblShoppingList.reloadData()
   <div class="widget-wrap">
     <h3 class="widget-title">归档</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2015/01/">January 2015</a><span class="archive-list-count">4</span></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2015/02/">February 2015</a><span class="archive-list-count">1</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2015/01/">January 2015</a><span class="archive-list-count">4</span></li></ul>
     </div>
   </div>
 
@@ -1099,6 +1404,10 @@ tblShoppingList.reloadData()
     <h3 class="widget-title">近期文章</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2015/02/08/WebKit框架概览-Part2/">WebKit框架概览-Part2</a>
+          </li>
         
           <li>
             <a href="/2015/01/29/RAC文档翻译-基本操作符/">RAC文档翻译-基本操作符</a>
